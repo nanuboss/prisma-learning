@@ -6,6 +6,9 @@ import {
   login,
   refresh,
   logout,
+  logoutAll,
+  getSessions,
+  revokeSession,
 } from "../../src/controllers/auth.controller.js";
 
 import { ApiError } from "../../src/utils/api-error.js";
@@ -20,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   refreshTokenCreate: vi.fn(),
   refreshTokenUpdateMany: vi.fn(),
   transaction: vi.fn(),
+  refreshTokenFindMany: vi.fn(),
+  refreshTokenFindFirst: vi.fn(),
 }));
 
 vi.mock("../../src/config/prisma.js", () => ({
@@ -32,6 +37,8 @@ vi.mock("../../src/config/prisma.js", () => ({
       findUnique: mocks.refreshTokenFindUnique,
       create: mocks.refreshTokenCreate,
       updateMany: mocks.refreshTokenUpdateMany,
+      findMany: mocks.refreshTokenFindMany,
+      findFirst: mocks.refreshTokenFindFirst,
     },
     $transaction: mocks.transaction,
   },
@@ -183,6 +190,14 @@ describe("Auth Controller", () => {
       );
 
       expect(mocks.generateAccessToken).toHaveBeenCalledWith("user-123");
+      expect(mocks.refreshTokenCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tokenHash: "hashed-mock-new-refresh-token",
+          familyId: expect.any(String),
+          userId: "user-123",
+          expiresAt: expect.any(Date),
+        }),
+      });
       expect(res.status).toHaveBeenCalledWith(200);
 
       expect(res.json).toHaveBeenCalledWith(
@@ -260,6 +275,7 @@ describe("Auth Controller", () => {
       mocks.refreshTokenFindUnique.mockResolvedValue({
         id: "token-123",
         userId: "user-123",
+        familyId: "family-123",
         expiresAt: new Date(Date.now() + 60_000),
         revokedAt: null,
       });
@@ -290,6 +306,14 @@ describe("Auth Controller", () => {
 
       expect(mocks.refreshTokenUpdateMany).toHaveBeenCalled();
       expect(mocks.refreshTokenCreate).toHaveBeenCalled();
+      expect(mocks.refreshTokenCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tokenHash: "hashed-mock-new-refresh-token",
+          familyId: "family-123",
+          userId: "user-123",
+          expiresAt: expect.any(Date),
+        }),
+      });
 
       expect(mocks.generateAccessToken).toHaveBeenCalledWith("user-123");
 
@@ -340,6 +364,7 @@ describe("Auth Controller", () => {
       mocks.refreshTokenFindUnique.mockResolvedValue({
         id: "token-123",
         userId: "user-123",
+        familyId: "family-123",
         expiresAt: new Date(Date.now() - 60_000),
         revokedAt: null,
       });
@@ -350,6 +375,7 @@ describe("Auth Controller", () => {
       });
 
       expect(mocks.transaction).not.toHaveBeenCalled();
+      expect(mocks.refreshTokenUpdateMany).not.toHaveBeenCalled();
     });
 
     it("should reject a revoked refresh token", async () => {
@@ -365,13 +391,24 @@ describe("Auth Controller", () => {
       mocks.refreshTokenFindUnique.mockResolvedValue({
         id: "token-123",
         userId: "user-123",
+        familyId: "family-123",
         expiresAt: new Date(Date.now() + 60_000),
         revokedAt: new Date(),
       });
 
       await expect(refresh(req, res)).rejects.toMatchObject({
         statusCode: 401,
-        message: "Invalid or expired refresh token",
+        message: "Refresh token reuse detected",
+      });
+
+      expect(mocks.refreshTokenUpdateMany).toHaveBeenCalledWith({
+        where: {
+          familyId: "family-123",
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: expect.any(Date),
+        },
       });
 
       expect(mocks.transaction).not.toHaveBeenCalled();
@@ -390,6 +427,7 @@ describe("Auth Controller", () => {
       mocks.refreshTokenFindUnique.mockResolvedValue({
         id: "token-123",
         userId: "user-123",
+        familyId: "family-123",
         expiresAt: new Date(Date.now() + 60_000),
         revokedAt: null,
       });
@@ -409,10 +447,22 @@ describe("Auth Controller", () => {
 
       await expect(refresh(req, res)).rejects.toMatchObject({
         statusCode: 401,
-        message: "Invalid or expired refresh token",
+        message: "Refresh token reuse detected",
       });
 
       expect(mocks.refreshTokenCreate).not.toHaveBeenCalled();
+
+      expect(mocks.refreshTokenUpdateMany).toHaveBeenCalledTimes(2);
+
+      expect(mocks.refreshTokenUpdateMany).toHaveBeenNthCalledWith(2, {
+        where: {
+          familyId: "family-123",
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: expect.any(Date),
+        },
+      });
     });
   });
 
@@ -454,23 +504,177 @@ describe("Auth Controller", () => {
     });
 
     it("should reject logout with invalid or revoked token", async () => {
-  const req = {} as Request;
-  const res = createResponse();
+      const req = {} as Request;
+      const res = createResponse();
 
-  Object.assign(res.locals, {
-    validatedData: {
-      refreshToken: "invalid-refresh-token",
-    },
+      Object.assign(res.locals, {
+        validatedData: {
+          refreshToken: "invalid-refresh-token",
+        },
+      });
+
+      mocks.refreshTokenUpdateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(logout(req, res)).rejects.toMatchObject({
+        statusCode: 401,
+        message: "Invalid or already revoked refresh token",
+      });
+    });
   });
 
-  mocks.refreshTokenUpdateMany.mockResolvedValue({
-    count: 0,
+  describe("logoutAll", () => {
+    it("should revoke all active refresh tokens for the authenticated user", async () => {
+      const req = {} as Request;
+      const res = createResponse();
+
+      res.locals.userId = "user-123";
+
+      mocks.refreshTokenUpdateMany.mockResolvedValue({
+        count: 3,
+      });
+
+      await logoutAll(req, res);
+
+      expect(mocks.refreshTokenUpdateMany).toHaveBeenCalledWith({
+        where: {
+          userId: "user-123",
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: expect.any(Date),
+        },
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: "Logged out from all devices successfully",
+        }),
+      );
+    });
   });
 
-  await expect(logout(req, res)).rejects.toMatchObject({
-    statusCode: 401,
-    message: "Invalid or already revoked refresh token",
+  describe("getSessions", () => {
+    it("should return active sessions for the authenticated user", async () => {
+      const req = {} as Request;
+      const res = createResponse();
+
+      res.locals.userId = "user-123";
+
+      const sessions = [
+        {
+          familyId: "family-123",
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      ];
+
+      mocks.refreshTokenFindMany.mockResolvedValue(sessions);
+
+      await getSessions(req, res);
+
+      expect(mocks.refreshTokenFindMany).toHaveBeenCalledWith({
+        where: {
+          userId: "user-123",
+          revokedAt: null,
+          expiresAt: {
+            gt: expect.any(Date),
+          },
+        },
+        distinct: ["familyId"],
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          familyId: true,
+          createdAt: true,
+          expiresAt: true,
+        },
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: "Sessions fetched successfully",
+          data: sessions,
+        }),
+      );
+    });
   });
-});
+
+  describe("revokeSession", () => {
+    it("should revoke an active session belonging to the authenticated user", async () => {
+      const req = {} as Request;
+      const res = createResponse();
+
+      res.locals.userId = "user-123";
+      res.locals.validatedData = {
+        id: "family-123",
+      };
+
+      mocks.refreshTokenFindFirst.mockResolvedValue({
+        id: "token-123",
+      });
+
+      mocks.refreshTokenUpdateMany.mockResolvedValue({
+        count: 2,
+      });
+
+      await revokeSession(req, res);
+
+      expect(mocks.refreshTokenFindFirst).toHaveBeenCalledWith({
+        where: {
+          userId: "user-123",
+          familyId: "family-123",
+          revokedAt: null,
+          expiresAt: {
+            gt: expect.any(Date),
+          },
+        },
+      });
+
+      expect(mocks.refreshTokenUpdateMany).toHaveBeenCalledWith({
+        where: {
+          userId: "user-123",
+          familyId: "family-123",
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: expect.any(Date),
+        },
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: "Session revoked successfully",
+        }),
+      );
+    });
+
+    it("should reject when the active session does not exist", async () => {
+      const req = {} as Request;
+      const res = createResponse();
+
+      res.locals.userId = "user-123";
+      res.locals.validatedData = {
+        id: "family-123",
+      };
+
+      mocks.refreshTokenFindFirst.mockResolvedValue(null);
+
+      await expect(revokeSession(req, res)).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Active session not found",
+      });
+
+      expect(mocks.refreshTokenUpdateMany).not.toHaveBeenCalled();
+    });
   });
 });

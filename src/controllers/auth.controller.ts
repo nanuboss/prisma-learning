@@ -3,13 +3,14 @@ import type { Request, Response } from "express";
 import { prisma } from "../config/prisma.js";
 import { ApiError } from "../utils/api-error.js";
 import { sendSuccess } from "../utils/api-response.js";
-import { hashPassword,comparePassword } from "../utils/password.js";
+import { hashPassword, comparePassword } from "../utils/password.js";
 import { generateAccessToken } from "../utils/jwt.js";
 import {
   generateRefreshToken,
   hashRefreshToken,
   REFRESH_TOKEN_EXPIRY_DAYS,
 } from "../utils/refresh-token.js";
+import { randomUUID } from "node:crypto";
 
 const publicUserSelect = {
   id: true,
@@ -69,10 +70,7 @@ export const login = async (req: Request, res: Response) => {
     throw new ApiError(401, "Invalid email or password");
   }
 
-  const isPasswordValid = await comparePassword(
-    password,
-    user.passwordHash,
-  );
+  const isPasswordValid = await comparePassword(password, user.passwordHash);
 
   if (!isPasswordValid) {
     throw new ApiError(401, "Invalid email or password");
@@ -82,17 +80,20 @@ export const login = async (req: Request, res: Response) => {
 
   const refreshToken = generateRefreshToken();
 
-const expiresAt = new Date(
-  Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-);
+  const familyId = randomUUID();
 
-await prisma.refreshToken.create({
-  data: {
-    tokenHash: hashRefreshToken(refreshToken),
-    userId: user.id,
-    expiresAt,
-  },
-});
+  const expiresAt = new Date(
+    Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  await prisma.refreshToken.create({
+    data: {
+      tokenHash: hashRefreshToken(refreshToken),
+      familyId,
+      userId: user.id,
+      expiresAt,
+    },
+  });
 
   const { passwordHash: _passwordHash, ...safeUser } = user;
 
@@ -117,11 +118,25 @@ export const refresh = async (req: Request, res: Response) => {
     where: { tokenHash },
   });
 
-  if (
-    !storedToken ||
-    storedToken.revokedAt ||
-    storedToken.expiresAt <= new Date()
-  ) {
+  if (!storedToken) {
+    throw new ApiError(401, "Invalid or expired refresh token");
+  }
+
+  if (storedToken.revokedAt) {
+    await prisma.refreshToken.updateMany({
+      where: {
+        familyId: storedToken.familyId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+
+    throw new ApiError(401, "Refresh token reuse detected");
+  }
+
+  if (storedToken.expiresAt <= new Date()) {
     throw new ApiError(401, "Invalid or expired refresh token");
   }
 
@@ -131,29 +146,49 @@ export const refresh = async (req: Request, res: Response) => {
     Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   );
 
-  await prisma.$transaction(async (tx) => {
-    const revoked = await tx.refreshToken.updateMany({
-      where: {
-        id: storedToken.id,
-        revokedAt: null,
-      },
-      data: {
-        revokedAt: new Date(),
-      },
-    });
+    try {
+    await prisma.$transaction(async (tx) => {
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          id: storedToken.id,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
 
-    if (revoked.count !== 1) {
-      throw new ApiError(401, "Invalid or expired refresh token");
+      if (revoked.count !== 1) {
+        throw new ApiError(401, "Refresh token reuse detected");
+      }
+
+      await tx.refreshToken.create({
+        data: {
+          tokenHash: hashRefreshToken(newRefreshToken),
+          familyId: storedToken.familyId,
+          userId: storedToken.userId,
+          expiresAt,
+        },
+      });
+    });
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      error.message === "Refresh token reuse detected"
+    ) {
+      await prisma.refreshToken.updateMany({
+        where: {
+          familyId: storedToken.familyId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
     }
 
-    await tx.refreshToken.create({
-      data: {
-        tokenHash: hashRefreshToken(newRefreshToken),
-        userId: storedToken.userId,
-        expiresAt,
-      },
-    });
-  });
+    throw error;
+  }
 
   const accessToken = generateAccessToken(storedToken.userId);
 
@@ -189,5 +224,88 @@ export const logout = async (req: Request, res: Response) => {
 
   return sendSuccess(res, 200, {
     message: "Logout successful",
+  });
+};
+
+export const logoutAll = async (req: Request, res: Response) => {
+  const userId = res.locals.userId;
+
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId,
+      revokedAt: null,
+    },
+    data: {
+      revokedAt: new Date(),
+    },
+  });
+
+  return sendSuccess(res, 200, {
+    message: "Logged out from all devices successfully",
+  });
+};
+
+export const getSessions = async (req: Request, res: Response) => {
+  const userId = res.locals.userId;
+
+  const sessions = await prisma.refreshToken.findMany({
+    where: {
+      userId,
+      revokedAt: null,
+      expiresAt: {
+        gt: new Date(),
+      },
+    },
+    distinct: ["familyId"],
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      familyId: true,
+      createdAt: true,
+      expiresAt: true,
+    },
+  });
+
+  return sendSuccess(res, 200, {
+    message: "Sessions fetched successfully",
+    data: sessions,
+  });
+};
+
+export const revokeSession = async (req: Request, res: Response) => {
+  const userId = res.locals.userId;
+  const { id: familyId } = res.locals.validatedData as {
+    id: string;
+  };
+
+  const session = await prisma.refreshToken.findFirst({
+    where: {
+      userId,
+      familyId,
+      revokedAt: null,
+      expiresAt: {
+        gt: new Date(),
+      },
+    },
+  });
+
+  if (!session) {
+    throw new ApiError(404, "Active session not found");
+  }
+
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId,
+      familyId,
+      revokedAt: null,
+    },
+    data: {
+      revokedAt: new Date(),
+    },
+  });
+
+  return sendSuccess(res, 200, {
+    message: "Session revoked successfully",
   });
 };

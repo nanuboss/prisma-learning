@@ -35,3 +35,7 @@ export const loginSchema = z.object({
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token is required"),
 });
+
+export const sessionParamsSchema = z.object({
+  id: z.string().uuid("Invalid session ID"),
+});
