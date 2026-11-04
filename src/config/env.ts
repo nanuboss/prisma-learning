@@ -10,12 +10,7 @@ dotenv.config({
 });
 
 const envSchema = z.object({
-  PORT: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(65535)
-    .default(5000),
+  PORT: z.coerce.number().int().min(1).max(65535).default(5000),
 
   NODE_ENV: z
     .enum(["development", "production", "test"])
@@ -30,6 +25,10 @@ const envSchema = z.object({
     .string()
     .url("CLIENT_URL must be a valid URL")
     .default("http://localhost:3000"),
+
+  JWT_SECRET: z
+    .string()
+    .min(32, "JWT_SECRET must be at least 32 characters long"),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -49,4 +48,5 @@ export const env = {
   nodeEnv: result.data.NODE_ENV,
   databaseUrl: result.data.DATABASE_URL,
   clientUrl: result.data.CLIENT_URL,
+  jwtSecret: result.data.JWT_SECRET,
 };

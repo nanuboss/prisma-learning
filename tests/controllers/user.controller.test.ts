@@ -132,6 +132,13 @@ describe("User Controller - Invalid ID Handling", () => {
         orderBy: {
           createdAt: "desc",
         },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       expect(prismaMocks.count).toHaveBeenCalledWith({
@@ -167,9 +174,9 @@ describe("User Controller - updateUser", () => {
       email: "new@example.com",
     };
 
-    prismaMocks.update.mockResolvedValue(updatedUser);
+    prismaMocks.update.mockResolvedValue(updatedUser);  
 
-    const req = {
+    const req = { 
       params: { id: "user-1" },
       body: { email: "new@example.com" },
     } as Request;
@@ -184,6 +191,13 @@ describe("User Controller - updateUser", () => {
     expect(prismaMocks.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { email: "new@example.com" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     expect(res.status).toHaveBeenCalledWith(200);

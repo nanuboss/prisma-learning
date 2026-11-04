@@ -3,6 +3,14 @@ import { prisma } from "../config/prisma.js";
 import { ApiError } from "../utils/api-error.js";
 import { sendSuccess } from "../utils/api-response.js";
 
+const publicUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export const createUser = async (req: Request, res: Response) => {
   const { name, email } = req.body as {
     name: string;
@@ -14,6 +22,7 @@ export const createUser = async (req: Request, res: Response) => {
       name,
       email,
     },
+    select: publicUserSelect,
   });
 
   return sendSuccess(res, 201, {
@@ -21,6 +30,7 @@ export const createUser = async (req: Request, res: Response) => {
     data: user,
   });
 };
+
 export const getUsers = async (req: Request, res: Response) => {
   const { page, limit, search, email } = res.locals.validatedData as {
     page: number;
@@ -47,21 +57,23 @@ export const getUsers = async (req: Request, res: Response) => {
       orderBy: {
         createdAt: "desc",
       },
+      select: publicUserSelect,
     }),
     prisma.user.count({ where }),
   ]);
 
   return sendSuccess(res, 200, {
-  message: "Users fetched successfully",
-  data: users,
-  meta: {
-    page,
-    limit,
-    total,
-    totalPages: Math.ceil(total / limit),
-  },
-});
+    message: "Users fetched successfully",
+    data: users,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  });
 };
+
 export const getUserById = async (req: Request, res: Response) => {
   const userId = req.params.id;
 
@@ -71,6 +83,7 @@ export const getUserById = async (req: Request, res: Response) => {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    select: publicUserSelect,
   });
 
   if (!user) {
@@ -78,11 +91,11 @@ export const getUserById = async (req: Request, res: Response) => {
   }
 
   return sendSuccess(res, 200, {
-  message: "User fetched successfully",
-  data: user,
-  
-});
+    message: "User fetched successfully",
+    data: user,
+  });
 };
+
 export const updateUser = async (req: Request, res: Response) => {
   const userId = req.params.id;
 
@@ -101,13 +114,15 @@ export const updateUser = async (req: Request, res: Response) => {
       ...(name !== undefined && { name }),
       ...(email !== undefined && { email }),
     },
+    select: publicUserSelect,
   });
 
   return sendSuccess(res, 200, {
-  message: "User updated successfully",
-  data: updatedUser,
-});
+    message: "User updated successfully",
+    data: updatedUser,
+  });
 };
+
 export const deleteUser = async (req: Request, res: Response) => {
   const userId = req.params.id;
 
@@ -120,6 +135,6 @@ export const deleteUser = async (req: Request, res: Response) => {
   });
 
   return sendSuccess(res, 200, {
-  message: "User deleted successfully",
-});
+    message: "User deleted successfully",
+  });
 };

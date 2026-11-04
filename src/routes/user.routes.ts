@@ -20,6 +20,8 @@ import {
   paginationQuerySchema,
 } from "../validations/common.validation.js";
 
+import { authenticate } from "../middlewares/auth.middleware.js";
+
 /**
  * @swagger
  * tags:
@@ -333,7 +335,7 @@ import {
  *                 success: false
  *                 message: User not found
  *                 errors: null
- * 
+ *
  *   patch:
  *     summary: Update user
  *     tags: [Users]
@@ -489,19 +491,25 @@ import {
 
 const router = Router();
 
-router.post("/", validate(createUserSchema), createUser);
+router.post("/", authenticate, validate(createUserSchema), createUser);
 
-router.get("/", validate(paginationQuerySchema, "query"), getUsers);
+router.get(
+  "/",
+  authenticate,
+  validate(paginationQuerySchema, "query"),
+  getUsers,
+);
 
-router.get("/:id", validate(uuidSchema, "params"), getUserById);
+router.get("/:id", authenticate, validate(uuidSchema, "params"), getUserById);
 
 router.patch(
   "/:id",
+  authenticate,
   validate(uuidSchema, "params"),
   validate(updateUserSchema),
   updateUser,
 );
 
-router.delete("/:id", validate(uuidSchema, "params"), deleteUser);
+router.delete("/:id", authenticate, validate(uuidSchema, "params"), deleteUser);
 
 export default router;

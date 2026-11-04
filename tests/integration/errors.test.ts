@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import request from "supertest";
 
 import app from "../../src/app.js";
+import { generateAccessToken } from "../../src/utils/jwt.js";
 
 describe("Error Middleware", () => {
   it("should return 400 for invalid JSON", async () => {
@@ -33,15 +34,19 @@ describe("Error Middleware", () => {
   });
 
   it("should return 404 when user is not found", async () => {
-    const response = await request(app).get(
-      "/api/v1/users/00000000-0000-4000-8000-000000000000",
-    );
+  const token = generateAccessToken(
+    "00000000-0000-4000-8000-000000000000",
+  );
 
-    expect(response.status).toBe(404);
-    expect(response.body.success).toBe(false);
-    expect(response.body.message).toBe("User not found");
-    expect(response.body.errors).toBeNull();
-  });
+  const response = await request(app)
+    .get("/api/v1/users/00000000-0000-4000-8000-000000000000")
+    .set("Authorization", `Bearer ${token}`);
+
+  expect(response.status).toBe(404);
+  expect(response.body.success).toBe(false);
+  expect(response.body.message).toBe("User not found");
+  expect(response.body.errors).toBeNull();
+});
 
   it("should return 404 for an unknown route", async () => {
     const response = await request(app).get("/api/v1/unknown-route");

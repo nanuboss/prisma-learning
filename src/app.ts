@@ -11,6 +11,7 @@ import { notFound } from "./middlewares/not-found.middleware.js";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./config/swagger.js";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 app.use(helmet());
@@ -50,6 +51,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // API routes
 app.use("/api/v1/health", healthRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/auth", authRoutes);
 
 // 404 handler
 app.use(notFound);
