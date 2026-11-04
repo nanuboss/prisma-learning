@@ -1,4 +1,12 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import { resolve } from "node:path";
+
+dotenv.config({
+  path: resolve(
+    process.cwd(),
+    process.env.NODE_ENV === "test" ? ".env.test" : ".env",
+  ),
+});
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 
