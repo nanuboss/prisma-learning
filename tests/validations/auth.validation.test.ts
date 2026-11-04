@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   registerSchema,
   loginSchema,
+  refreshTokenSchema
 } from "../../src/validations/auth.validation.js";
 
 describe("registerSchema", () => {
@@ -86,6 +87,32 @@ describe("loginSchema", () => {
       email: "dinesh@example.com",
       password: "",
     });
+
+    expect(result.success).toBe(false);
+  });
+
+
+});
+
+describe("refreshTokenSchema", () => {
+  it("should accept a valid refresh token", () => {
+    const result = refreshTokenSchema.safeParse({
+      refreshToken: "valid-refresh-token",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject an empty refresh token", () => {
+    const result = refreshTokenSchema.safeParse({
+      refreshToken: "",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject a missing refresh token", () => {
+    const result = refreshTokenSchema.safeParse({});
 
     expect(result.success).toBe(false);
   });

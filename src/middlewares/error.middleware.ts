@@ -5,9 +5,9 @@ import { ApiError } from "../utils/api-error.js";
 import { handlePrismaError } from "../utils/prisma-error.js";
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  if (env.nodeEnv === "development") {
-    console.error(err);
-  }
+  if (env.nodeEnv !== "production") {
+  console.error(err);
+}
 
   // Request body too large
   if (

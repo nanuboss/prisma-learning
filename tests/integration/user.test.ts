@@ -20,10 +20,16 @@ describe("User API", () => {
         password: testPassword,
       });
 
+    expect(registerResponse.status).toBe(201);
+
     const loginResponse = await request(app).post("/api/v1/auth/login").send({
       email: testEmail,
       password: testPassword,
     });
+
+
+
+    expect(loginResponse.status).toBe(200);
 
     accessToken = loginResponse.body.data.accessToken;
   });
