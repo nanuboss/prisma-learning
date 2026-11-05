@@ -34,10 +34,13 @@ describe("Auth API - Session Management", () => {
 
     expect(register2.status).toBe(201);
 
-    const login1 = await request(app).post("/api/v1/auth/login").send({
-      email: testEmail,
-      password: testPassword,
-    });
+    const login1 = await request(app)
+      .post("/api/v1/auth/login")
+      .set("User-Agent", "Mozilla/5.0 Chrome/120.0.0.0 Windows NT 10.0")
+      .send({
+        email: testEmail,
+        password: testPassword,
+      });
 
     expect(login1.status).toBe(200);
     accessToken = login1.body.data.accessToken;
@@ -126,6 +129,18 @@ describe("Auth API - Session Management", () => {
         (session: { familyId: string }) => typeof session.familyId === "string",
       ),
     ).toBe(true);
+
+    const session = response.body.data.find(
+      (item: { familyId: string }) => item.familyId === sessionId,
+    );
+
+    expect(session).toMatchObject({
+      userAgent: "Mozilla/5.0 Chrome/120.0.0.0 Windows NT 10.0",
+      deviceName: "Chrome on Windows",
+    });
+
+    expect(typeof session.ipAddress).toBe("string");
+    expect(typeof session.lastUsedAt).toBe("string");
   });
 
   it("should revoke a specific active session", async () => {

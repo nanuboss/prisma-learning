@@ -11,6 +11,7 @@ import {
   REFRESH_TOKEN_EXPIRY_DAYS,
 } from "../utils/refresh-token.js";
 import { randomUUID } from "node:crypto";
+import { getDeviceName } from "../utils/device-info.js";
 
 const publicUserSelect = {
   id: true,
@@ -86,11 +87,17 @@ export const login = async (req: Request, res: Response) => {
     Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   );
 
+  const userAgent = req.get?.("user-agent");
+
   await prisma.refreshToken.create({
     data: {
       tokenHash: hashRefreshToken(refreshToken),
       familyId,
       userId: user.id,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+      deviceName: getDeviceName(userAgent),
+      lastUsedAt: new Date(),
       expiresAt,
     },
   });
@@ -146,7 +153,7 @@ export const refresh = async (req: Request, res: Response) => {
     Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   );
 
-    try {
+  try {
     await prisma.$transaction(async (tx) => {
       const revoked = await tx.refreshToken.updateMany({
         where: {
@@ -167,6 +174,10 @@ export const refresh = async (req: Request, res: Response) => {
           tokenHash: hashRefreshToken(newRefreshToken),
           familyId: storedToken.familyId,
           userId: storedToken.userId,
+          ipAddress: storedToken.ipAddress,
+          userAgent: storedToken.userAgent,
+          deviceName: storedToken.deviceName,
+          lastUsedAt: new Date(),
           expiresAt,
         },
       });
@@ -264,6 +275,10 @@ export const getSessions = async (req: Request, res: Response) => {
       familyId: true,
       createdAt: true,
       expiresAt: true,
+       ipAddress: true,
+  userAgent: true,
+  deviceName: true,
+  lastUsedAt: true,
     },
   });
 

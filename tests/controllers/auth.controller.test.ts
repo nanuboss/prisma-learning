@@ -160,7 +160,10 @@ describe("Auth Controller", () => {
 
   describe("login", () => {
     it("should login successfully with valid credentials", async () => {
-      const req = {} as Request;
+      const req = {
+        ip: "203.0.113.10",
+        get: () => "Mozilla/5.0 Chrome/Windows",
+      } as unknown as Request;
       const res = createResponse();
 
       Object.assign(res.locals, {
@@ -195,6 +198,10 @@ describe("Auth Controller", () => {
           tokenHash: "hashed-mock-new-refresh-token",
           familyId: expect.any(String),
           userId: "user-123",
+          ipAddress: "203.0.113.10",
+          userAgent: "Mozilla/5.0 Chrome/Windows",
+          deviceName: "Chrome on Windows",
+          lastUsedAt: expect.any(Date),
           expiresAt: expect.any(Date),
         }),
       });
@@ -277,6 +284,10 @@ describe("Auth Controller", () => {
         userId: "user-123",
         familyId: "family-123",
         expiresAt: new Date(Date.now() + 60_000),
+        ipAddress: "203.0.113.10",
+        userAgent: "Mozilla/5.0 Chrome/Windows",
+        deviceName: "Chrome on Windows",
+        lastUsedAt: new Date(),
         revokedAt: null,
       });
 
@@ -570,6 +581,10 @@ describe("Auth Controller", () => {
           familyId: "family-123",
           createdAt: new Date(),
           expiresAt: new Date(Date.now() + 60_000),
+          ipAddress: "203.0.113.10",
+          userAgent: "Mozilla/5.0 Chrome/Windows",
+          deviceName: "Chrome on Windows",
+          lastUsedAt: new Date(),
         },
       ];
 
@@ -593,6 +608,10 @@ describe("Auth Controller", () => {
           familyId: true,
           createdAt: true,
           expiresAt: true,
+          ipAddress: true,
+          userAgent: true,
+          deviceName: true,
+          lastUsedAt: true,
         },
       });
 

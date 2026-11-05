@@ -18,14 +18,18 @@ model User {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid())
-  tokenHash String    @unique
-  familyId  String
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
+  id          String    @id @default(uuid())
+  tokenHash   String    @unique
+  familyId    String
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress   String?
+  userAgent   String?
+  deviceName  String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
 
   @@index([familyId])
   @@index([userId])
